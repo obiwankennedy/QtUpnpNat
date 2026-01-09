@@ -62,23 +62,15 @@ UpnpNat::UpnpNat(QObject* parent) : QObject(parent)
     connect(&m_manager, &QNetworkAccessManager::finished, this,
             [this](QNetworkReply* reply)
             {
-                if(m_status == UpnpNat::NAT_STAT::NAT_DESCRIPTION_FOUND)
+                if(m_status == UpnpNat::NAT_STAT::NAT_READY)
                 {
                     processAnswer(reply);
                 }
                 else
                 {
-                    m_data= reply->readAll();
-                    processXML();
+                    processXML(reply);
                 }
             });
-}
-
-UpnpNat::~UpnpNat()= default;
-
-void UpnpNat::init()
-{
-    setStatus(NAT_STAT::NAT_INIT);
 
     for(auto const& address : QNetworkInterface::allAddresses())
     {
@@ -89,9 +81,11 @@ void UpnpNat::init()
     }
 }
 
+UpnpNat::~UpnpNat()= default;
+
 void UpnpNat::discovery()
 {
-    qDebug() << "discovery";
+    setStatus(NAT_STAT::NAT_DISCOVERY);
     m_udpSocketV4.reset(new QUdpSocket(this));
 
     QHostAddress broadcastIpV4(HTTPMU_HOST_ADDRESS);
@@ -108,7 +102,6 @@ void UpnpNat::discovery()
         }
 
         QString result(datagram);
-        qDebug() << "discovery result:" << result;
         auto start= result.indexOf("http://");
 
         if(start < 0)
@@ -126,14 +119,13 @@ void UpnpNat::discovery()
             return;
         }
 
-        m_describe_url= result.sliced(start, end - start);
+        m_describeUrl= result.sliced(start, end - start);
 
         setStatus(NAT_STAT::NAT_FOUND);
         m_udpSocketV4->close();
     });
 
     connect(m_udpSocketV4.get(), &QUdpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
-        qDebug() << "error:" << m_udpSocketV4->errorString();
         setError(m_udpSocketV4->errorString());
         setStatus(NAT_STAT::NAT_ERROR);
     });
@@ -143,41 +135,24 @@ void UpnpNat::discovery()
 
 void UpnpNat::requestDescription()
 {
+    setStatus(NAT_STAT::NAT_GETDESCRIPTION);
     QNetworkRequest request;
-    request.setUrl(QUrl(m_describe_url));
+    request.setUrl(QUrl(m_describeUrl));
     m_manager.get(request);
 }
 
-void UpnpNat::processXML()
+void UpnpNat::processXML(QNetworkReply* reply)
 {
-    if(m_description_info.isEmpty())
-    {
-        auto pos= m_data.indexOf("<?xml");
-        if(pos >= 0)
-            m_description_info= m_data.sliced(pos);
+    auto data= reply->readAll();
+    if(data.isEmpty()) {
+        setError(tr("Description file is empty"));
+        setStatus(NAT_STAT::NAT_ERROR);
+        return;
     }
-    else
-        m_description_info+= QString(m_data);
 
-    if(m_description_info.contains("</root>"))
-    {
-        setStatus(NAT_STAT::NAT_DESCRIPTION_FOUND);
-        emit discoveryEnd(parseDescription());
-    }
-    else
-    {
-        emit discoveryEnd(false);
-    }
-}
+    setStatus(NAT_STAT::NAT_DESCRIPTION_FOUND);
 
-void UpnpNat::setDescription(const QString& xml)
-{
-    m_description_info= xml;
-}
-
-bool UpnpNat::parseDescription()
-{
-    QXmlStreamReader xml(m_description_info);
+    QXmlStreamReader xml(data);
     bool isType1= false;
     bool isType2= false;
     bool isType3= false;
@@ -194,7 +169,7 @@ bool UpnpNat::parseDescription()
         if(xml.name() == QLatin1String("URLBase"))
         {
             goToNextCharacter();
-            m_base_url= xml.text().toString();
+            m_baseUrl= xml.text().toString();
         }
         if(xml.name() == QLatin1String("deviceType"))
         {
@@ -213,52 +188,52 @@ bool UpnpNat::parseDescription()
             goToNextCharacter();
             auto serviceType= xml.text().toString();
             if((serviceType.contains(key::serviceTypeWANPPP) || serviceType.contains(key::serviceTypeWanIP))
-                && m_service_type.isEmpty())
+                && m_serviceType.isEmpty())
             {
-                m_service_type= serviceType;
+                m_serviceType= serviceType;
             }
         }
-        if(xml.name() == QLatin1String("controlURL") && !m_service_type.isEmpty() && m_control_url.isEmpty())
+        if(xml.name() == QLatin1String("controlURL") && !m_serviceType.isEmpty() && m_controlUrl.isEmpty())
         {
             goToNextCharacter();
-            m_control_url= xml.text().toString();
+            m_controlUrl= xml.text().toString();
         }
     }
 
-    if(m_base_url.isEmpty())
+    if(m_baseUrl.isEmpty())
     {
-        auto index= m_describe_url.indexOf("/", 7);
+        auto index= m_describeUrl.indexOf("/", 7);
         if(index < 0)
         {
             setError(tr("Fail to get base_URL from XMLNode \"URLBase\" or describe_url.\n"));
-            return false;
+            return;
         }
-        m_base_url= m_describe_url.sliced(0, index);
+        m_baseUrl= m_describeUrl.sliced(0, index);
     }
 
     if(!isType1 || !isType2 || !isType3)
     {
         setError(tr("Fail to find proper service type: %1 %2 %3").arg(isType1).arg(isType2).arg(isType3));
-        return false;
+        return;
     }
 
     // make the complete control_url;
-    if(!m_control_url.startsWith("http://", Qt::CaseInsensitive))
-        m_control_url= m_base_url + m_control_url;
-    if(!m_service_describe_url.startsWith("http://", Qt::CaseInsensitive))
-        m_service_describe_url= m_base_url + m_service_describe_url;
+    if(!m_controlUrl.startsWith("http://", Qt::CaseInsensitive))
+        m_controlUrl= m_baseUrl + m_controlUrl;
+    if(!m_serviceDescribeUrl.startsWith("http://", Qt::CaseInsensitive))
+        m_serviceDescribeUrl= m_baseUrl + m_serviceDescribeUrl;
 
 #ifdef QT_DEBUG
     qDebug() << "##############";
-    qDebug() << "Service: " << m_service_type;
-    qDebug() << "describe:" << m_describe_url;
-    qDebug() << "Control:" << m_control_url;
-    qDebug() << "Base:" << m_base_url;
-    qDebug() << "service url:" << m_service_describe_url;
-    qDebug() << "Description:" << m_description_info;
+    qDebug() << "Service: " << m_serviceType;
+    qDebug() << "describe:" << m_describeUrl;
+    qDebug() << "Control:" << m_controlUrl;
+    qDebug() << "Base:" << m_baseUrl;
+    qDebug() << "service url:" << m_serviceDescribeUrl;
     qDebug() << "##############" << isType1 << isType2 << isType3;
 #endif
-    return true;
+
+    setStatus(NAT_STAT::NAT_READY);
 }
 
 void UpnpNat::addPortMapping(const QString& description, const QString& destination_ip, unsigned short int port_ex,
@@ -268,30 +243,30 @@ void UpnpNat::addPortMapping(const QString& description, const QString& destinat
     Q_UNUSED(protocol)
 
     inja::json subdata;
-    subdata["service"]= m_service_type.toStdString();
+    subdata["service"]= m_serviceType.toStdString();
     subdata["port"]= port_in;
     subdata["ip"]= destination_ip.toStdString();
 
     auto text= QByteArray::fromStdString(inja::render(loadFile(key::envelop).toStdString(), subdata));
 
     QNetworkRequest request;
-    request.setUrl(QUrl(m_control_url));
+    request.setUrl(QUrl(m_controlUrl));
     QHttpHeaders headers;
     headers.append(QHttpHeaders::WellKnownHeader::ContentType, "text/xml;  charset=\"utf-8\"");
-    headers.append("SOAPAction", QString("\"%1#AddPortMapping\"").arg(m_service_type));
+    headers.append("SOAPAction", QString("\"%1#AddPortMapping\"").arg(m_serviceType));
     request.setHeaders(headers);
     m_manager.post(request, text);
 }
 
 void UpnpNat::processAnswer(QNetworkReply* reply)
 {
-    if(reply->error() == QNetworkReply::NoError)
+    if(reply->error() != QNetworkReply::NoError)
     {
-        setStatus(NAT_STAT::NAT_ADD);
-        emit portMappingEnd(true);
+        setError(tr("Something went wrong: %1").arg(reply->errorString()));
+        setStatus(NAT_STAT::NAT_ERROR);
         return;
     }
-    emit portMappingEnd(false);
+    setStatus(NAT_STAT::NAT_ADD);
 }
 
 void UpnpNat::setStatus(NAT_STAT status)
@@ -300,9 +275,6 @@ void UpnpNat::setStatus(NAT_STAT status)
         return;
     m_status= status;
     emit statusChanged();
-
-    if(NAT_STAT::NAT_FOUND == m_status)
-        requestDescription();
 }
 
 void UpnpNat::setLocalIp(const QString& ip)

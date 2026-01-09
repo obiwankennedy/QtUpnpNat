@@ -7,11 +7,11 @@
       xmlns:u="{{ service }}">
       <NewRemoteHost></NewRemoteHost>
       <NewExternalPort>{{ port }}</NewExternalPort>
-      <NewProtocol>TCP</NewProtocol>
+      <NewProtocol>{{ protocol }}</NewProtocol>
       <NewInternalPort>{{ port }}</NewInternalPort>
       <NewInternalClient>{{ ip }}</NewInternalClient>
       <NewEnabled>1</NewEnabled>
-      <NewPortMappingDescription>RolisteamServer</NewPortMappingDescription>
+      <NewPortMappingDescription>{{ description }}</NewPortMappingDescription>
       <NewLeaseDuration>0</NewLeaseDuration>
     </u:AddPortMapping>
   </s:Body>
