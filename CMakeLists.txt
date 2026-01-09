@@ -8,6 +8,12 @@ find_package(Qt6 ${QT_REQUIRED_VERSION} CONFIG REQUIRED COMPONENTS Core Network)
 
 
 add_library(qtnat SHARED upnpnat.cpp upnpnat.h)
+qt_add_resources(qtnat templates
+PREFIX
+"/"
+FILES
+    mapport.xml
+)
 target_link_libraries(qtnat PRIVATE Qt6::Core Qt6::Network)
 
 add_executable(tst_upnp tst_upnp.cpp)

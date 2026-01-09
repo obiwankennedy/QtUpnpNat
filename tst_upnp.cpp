@@ -5,36 +5,34 @@
 
 int main(int argc, char* argv[])
 {
-
     QCoreApplication app(argc, argv);
     UpnpNat nat;
 
-    /*QFile file("/home/renaud/gatedesc0b.xml");
-    if(!file.open(QIODevice::ReadOnly))
-        qDebug() << "error can't read the file";
-
-    auto all= QString(file.readAll());
-
-    nat.setDescription(all);
-
-    nat.new_parser_description();
-    nat.parser_description();*/
-
-    nat.init(5, 10);
-    QObject::connect(&nat, &UpnpNat::discoveryEnd, [&nat](bool b) {
-        if(b)
-            nat.addPortMapping("upnpRolisteam", nat.localIp(), 6664, 6664, "TCP");
-        // qDebug() << "Discovery END:"<<b;
-    });
     QObject::connect(&nat, &UpnpNat::statusChanged, [&nat, &app]() {
-        if(nat.status() == UpnpNat::NAT_STAT::NAT_ADD)
+        switch(nat.status())
         {
+        case UpnpNat::NAT_STAT::NAT_IDLE:
+        case UpnpNat::NAT_STAT::NAT_DISCOVERY:
+        case UpnpNat::NAT_STAT::NAT_GETDESCRIPTION:
+        case UpnpNat::NAT_STAT::NAT_DESCRIPTION_FOUND:
+            break;
+        case UpnpNat::NAT_STAT::NAT_FOUND:
+            nat.requestDescription();
+            break;
+        case UpnpNat::NAT_STAT::NAT_READY:
+            nat.addPortMapping("UpnpTest", nat.localIp(), 6664, 6664, "TCP");
+            break;
+        case UpnpNat::NAT_STAT::NAT_ADD:
             qDebug() << "It worked!";
             app.quit();
+            break;
+        case UpnpNat::NAT_STAT::NAT_ERROR:
+            qDebug() <<"Error:" <<nat.error();
+            app.exit(1);
+            break;
+
         }
     });
-
-    QObject::connect(&nat, &UpnpNat::lastErrorChanged, [&nat]() { qDebug() << " Error:" << nat.lastError(); });
 
     nat.discovery();
 
