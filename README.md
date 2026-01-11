@@ -2,10 +2,19 @@
 
 Simple class dedicated to open a port. There is an example how to use it. 
 
+## Dependencies
 
-# TODO:
+* Qt6
+* inja (included)
+* json (included)
 
-* Clean code
-* Use QNetworkManager instead of QTcpSocket
-* better management of async to prevent warning and stuff
-* remove debug outputs
+## License 
+
+* GPL-v3
+* inja: MIT
+* json: MIT
+
+
+## TODO:
+
+* Support other action on Upnp
