@@ -1,3 +1,7 @@
+/*
+ * SPDX-FileCopyrightText: 2022-2026 Renaud Guezennec <renaud@rolisteam.org>
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 #include "upnpnat.h"
 
 #include <QNetworkInterface>
@@ -239,13 +243,12 @@ void UpnpNat::processXML(QNetworkReply* reply)
 void UpnpNat::addPortMapping(const QString& description, const QString& destination_ip, unsigned short int port_ex,
                              unsigned short int port_in, const QString& protocol)
 {
-    Q_UNUSED(description)
-    Q_UNUSED(protocol)
-
     inja::json subdata;
     subdata["service"]= m_serviceType.toStdString();
     subdata["port"]= port_in;
     subdata["ip"]= destination_ip.toStdString();
+    subdata["protocol"]= protocol.toStdString();
+    subdata["description"]= description.toStdString();
 
     auto text= QByteArray::fromStdString(inja::render(loadFile(key::envelop).toStdString(), subdata));
 

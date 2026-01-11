@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2022-2026 Renaud Guezennec <renaud@rolisteam.org>
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 #ifndef UPNPNAT_H
 #define UPNPNAT_H
 
